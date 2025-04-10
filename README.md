@@ -1,7 +1,11 @@
 # COLOR
 
 **Paper** <br>
-[COLOR: A compositional linear operation-based representation of protein sequences for identification of monomer contributions to properties](https://doi.org/10.1021/acs.jcim.5c00205)
+[COLOR: A compositional linear operation-based representation of protein sequences for identification of monomer contributions to properties](https://doi.org/10.1021/acs.jcim.5c00205) <br>
+
+[This paper is also accepted at the ICLR MLGenX workshop:](https://openreview.net/pdf/85e9ee333ee39e85e5cd767283a13035cb03f509.pdf)
+
+![Model Architecture](architecture.png)
 
 <pre> conda env create -f environment.yml </pre>
 
