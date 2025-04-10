@@ -25,7 +25,7 @@ from complor import dataset, complor_network
 which_data = input('Enter the dataset for which you want to calculate the token importance (train,valid,test):')
 
 ## Dataloader
-batch_size = 1
+batch_size = 256
 class spiderdataset(Dataset) :
     def __init__(self,ohe, classes,seq_len,output, n_samples) :
         # data loading
@@ -58,59 +58,57 @@ def make_dataset():
     return  test_loader, ohe_valid.shape[0], ohe_valid.shape[1]
 
     
-def initalize():
-    
+def initalize():    
+    init_lr = np.load('./model/init_lr.npy', allow_pickle=True)
+    # init_lr = init_lr[0]
     model = torch.load('./model/best.pth')
     rank = next(model.parameters()).device 
     model.eval().to(rank) 
     print('Number of trainable parameters:', builtins.sum(p.numel() for p in model.parameters()))
     criterion = nn.MSELoss()
-    # optimizer = torch.optim.Adam(model.parameters(), lr=init_lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=init_lr)
     
-    return model, criterion
+    return model, criterion,optimizer
 
 def motif_identification():  
-    all_f_imp = np.load(f'./model/f_imp_{which_data}.npy', allow_pickle=True)
     test_loader, test_size, max_seq_len  = make_dataset()
-    model, _ = initalize()
+    model, criterion,optimizer = initalize()
     rank = next(model.parameters()).device 
-    f_name = np.load(f'./model/f_name_{which_data}.npy', allow_pickle=True)
-    store_all_imp = torch.zeros((test_size, max_seq_len)).to(rank)
-    
-    for sample, (i_x,i_classes, i_seq, _) in enumerate(test_loader):
+    store_importance = torch.zeros((test_size, max_seq_len)).to(rank)
+    count_test = 0
+    for _, (i_x,i_classes, i_seq, i_actual) in enumerate(test_loader):
         i_x = i_x.to(rank) #.type(dtype=torch.float32)
-        i_seq = i_seq.to(rank)
-        i_seq[0] = i_x.size(1)
+        i_seq = i_seq.to(rank).type(dtype=torch.float32)
         i_classes = i_classes.to(rank)
-        # i_x = i_x[:,0:int(i_seq.item()),:]
-        # i_classes = i_classes[:,0:int(i_seq.item())]
+        i_actual = i_actual.to(rank)
+        i_batch = len(i_actual)
+        iter_y_pred, cam = model.forward_motif_importance(i_x, i_classes, i_seq)
+        base_loss = criterion(iter_y_pred, i_actual)
+        optimizer.zero_grad()
+        base_loss.backward()
         
-        f_importance = all_f_imp[sample]
-        idx = np.argsort(f_importance)
-        idx = idx[::-1]
-        f_importance = f_importance[idx]
-        # print(f_importance)
-        use_names = f_name[idx]
-        '''has to be done for each test example'''
-        f_pointer = 0 
-        while f_pointer < 50: 
-            feature = use_names[f_pointer].split('_')
-            l,b,h = int(feature[0]), int(feature[1]), int(feature[2])                 
-            with torch.no_grad():  
-                
-                if f_pointer == 0:
-                    overall_imp_segments = torch.zeros((int(i_seq.item()),)).to(rank)
-                    trace_visitation = torch.zeros((int(i_seq.item()),)).to(rank)
-                overall_imp_segments, trace_visitation = \
-                model.importance_calculation(i_x, i_classes, i_seq, [l,b,h], overall_imp_segments, f_importance[f_pointer], trace_visitation)    
-                        
-            f_pointer += 1
-        # print(overall_imp_segments[0:24])
-        store_all_imp[sample,0:int(i_seq.item())] = overall_imp_segments
-        print(f'Sequence {sample+1} done')
+        cam = torch.abs(cam[0])
+        print('Size of the gradient',cam.size())
+
+        
+        for prot in range(cam.size(0)):
+            cam[prot,...] = cam[prot,...]/(torch.max(cam[prot,...])+1E-18)
             
-    with torch.no_grad():
-        np.save(f'./model/importance_{which_data}', store_all_imp.to('cpu'))
+        for m_i in range(cam.size(-1)):
+            mo_level_imp = \
+                model.calculate_motif_level(cam[...,m_i], m_i+1)
+            
+
+            kernel_size = max_seq_len - mo_level_imp.size(-1) + 1
+            store_importance[count_test:count_test+i_batch,...] += model.assigning_importance(mo_level_imp, kernel_size, max_seq_len)
+
+        
+        count_test += i_batch
+    
+    with torch.no_grad():   
+        store_importance = store_importance.to('cpu').numpy()
+        print(store_importance[15])
+        np.save(f'./model/importance_{which_data}', store_importance)
     
 
         

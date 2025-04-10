@@ -73,7 +73,12 @@ class PositionalEncoding(nn.Module):
         # print(x.size(), self.pe[:x.size(0)].size())
         x = x + self.pe[:x.size(0)].to(rank)
         return self.dropout(x)
-    
+
+def extract(grad):
+        # grad = torch.mean(grad, dim=1)
+        # return grad
+        cam.append(grad)
+          
 class complor_network(nn.Module):
     def __init__(self, num_classes, d_model, d_out, max_m, rank):
         super(complor_network, self).__init__()
@@ -158,198 +163,92 @@ class complor_network(nn.Module):
         'x: [batch, seq_len, feature], classes: [N,L]'
 
         out = torch.permute(x,(0,2,1)) ## making it (N, f, L)
-        out = self.positional_encoding(out.permute(2,0,1),self.rank) ##[L,N,f]
         
+        out = self.positional_encoding(out.permute(2,0,1),self.rank) ##[L,N,f]        
         out = out.permute(1,2,0)
         
         out_1 = self.cnn1(out) ##[N,f,L]
         out_1 = torch.permute(self.ln1(torch.permute(out_1,(0,2,1))),(0,2,1))
-        # out_2 = self.cnn2(out) ##[N,f,L]
-        # out_2 = torch.permute(self.ln2(torch.permute(out_2,(0,2,1))),(0,2,1))
-        # out_3 = self.cnn3(out)
-        # out_3 = torch.permute(self.ln3(torch.permute(out_3,(0,2,1))),(0,2,1))
-        # out_4 = self.cnn4(out)
-        # out_4 = torch.permute(self.ln4(torch.permute(out_4,(0,2,1))),(0,2,1))
-
+        
         pool_1 = self.maxpool1(x.permute(0,2,1))*self.motif_size_1 ## [N,f,L]
         for i in range(x.size(0)):
             pool_1[i,:,:] = pool_1[i,:,:]/seq_len[i]
-        
-        # pool_2 = self.maxpool2(x.permute(0,2,1))*self.motif_size_2 ## [N,f,L]
-        # pool_3 = self.maxpool3(x.permute(0,2,1))*self.motif_size_3
-        # pool_4 = self.maxpool4(x.permute(0,2,1))*self.motif_size_4
-   
-        
+            
         out_1 = torch.matmul(pool_1, out_1.permute(0,2,1))
         out_1 = out_1.reshape((out_1.size(0), out_1.size(1), out_1.size(2),1))
         
-        # out_2 = torch.matmul(pool_2, out_2.permute(0,2,1))
-        # out_2 = out_2.reshape((out_2.size(0), out_2.size(1), out_2.size(2),1))
-        
-        # # out_3 = self.cnn3(out) ##[N,f,L]
-        # out_3 = torch.matmul(pool_3, out_3.permute(0,2,1))
-        # out_3 = out_3.reshape((out_3.size(0), out_3.size(1), out_3.size(2),1))
-        
-        # # out_4 = self.cnn4(out) ##[N,f,L]
-        # out_4 = torch.matmul(pool_4, out_4.permute(0,2,1))
-        # out_4 = out_4.reshape((out_4.size(0), out_4.size(1), out_4.size(2),1))
-        
-        # heat_map = torch.cat((out_1, out_2, out_3,out_4), dim=3)      
         heat_map = out_1
-        # heat_map = nn.Softmax(dim=1)(heat_map)
         
         heat_map = heat_map.permute(0,2,3,1)
         # heat_map = self.ln4(heat_map)
-        
         
         heat_map = nn.Flatten()(heat_map[:,:,:,:]) ## removing amino acid contribution from heat map as there are none        
         heat_map = self.nn(heat_map)
         
         return heat_map
+        
+    def assigning_importance(self,mo_level, kernel_size,unwrapped_len):   
+        reduced_len = mo_level.size(-1)
+        sequence_importance = torch.zeros((mo_level.size(0), unwrapped_len)).to(self.rank)
+        
+        for i in range(reduced_len):
+            sequence_importance[:,i:(i+kernel_size)] += \
+                mo_level[:,i].unsqueeze(-1)
+        
+        return sequence_importance
+        
+        
+    def calculate_motif_level(self,dp,m_i):
+        d_comp = getattr(self, f'pool_{m_i}') #self.pool_1[:,q,:]
+        q_comp = getattr(self, f'out_{m_i}')
     
-    def forward_feature_importance(self, x,  classes, seq_len, f, permute):
+        total = d_comp.size(0)
+        max_len = d_comp.size(-1)
+        q_id = q_comp.size(1)
+        d_id = d_comp.size(1)
+        
+        all_motif_importance = torch.zeros((total, max_len)).to(self.rank)
+        
+        for i in range(q_id): # i is related to size of latent rep
+            for j in range(d_id): # j in related to num of categorical var
+                for prot in range(total): # prot defines the protein number in a batch
+                    l = int(self.seq_len[prot])
+                    temp = torch.abs(d_comp[prot,j,0:l]*q_comp[prot,i,0:l]) # taking abs because the magnitude matters
+                    temp = (temp-torch.min(temp))/(torch.max(temp)-torch.min(temp)+1E-18)
+                    # temp = (temp)/(torch.max(temp)+1E-18)
+                    var_imp = dp[prot,j,i].unsqueeze(-1)
+                    all_motif_importance[prot,0:l] += temp*var_imp
+
+        return all_motif_importance
+    
+    def forward_motif_importance(self, x,  classes, seq_len):
         'x: [batch, seq_len, feature], classes: [N,L]'
+        global cam 
+        cam = []
+        self.Lin = x.size(1)
+        self.seq_len = seq_len
 
         out = torch.permute(x,(0,2,1)) ## making it (N, f, L)
-        out = self.positional_encoding(out.permute(2,0,1),self.rank) ##[L,N,f]
-        
+        out = self.positional_encoding(out.permute(2,0,1),self.rank) ##[L,N,f]        
         out = out.permute(1,2,0)
         
-        out_1 = self.cnn1(out) ##[N,f,L]
-        out_1 = torch.permute(self.ln1(torch.permute(out_1,(0,2,1))),(0,2,1))
-        # out_2 = self.cnn2(out) ##[N,f,L]
-        # out_2 = torch.permute(self.ln2(torch.permute(out_2,(0,2,1))),(0,2,1))
-        # out_3 = self.cnn3(out)
-        # out_3 = torch.permute(self.ln3(torch.permute(out_3,(0,2,1))),(0,2,1))
-        # out_4 = self.cnn4(out)
-        # out_4 = torch.permute(self.ln4(torch.permute(out_4,(0,2,1))),(0,2,1))
-
-    
-        pool_1 = self.maxpool1(x.permute(0,2,1))*self.motif_size_1 ## [N,f,L]
-        for i in range(x.size(0)):
-            pool_1[i,:,:] = pool_1[i,:,:]/seq_len[i]
+        self.out_1 = self.cnn1(out) ##[N,f,L]
+        self.out_1 = torch.permute(self.ln1(torch.permute(self.out_1,(0,2,1))),(0,2,1))
         
-        # pool_2 = self.maxpool2(x.permute(0,2,1))*self.motif_size_2 ## [N,f,L]
-        # pool_3 = self.maxpool3(x.permute(0,2,1))*self.motif_size_3
-        # pool_4 = self.maxpool4(x.permute(0,2,1))*self.motif_size_4
+        self.pool_1 = self.maxpool1(x.permute(0,2,1))*self.motif_size_1 ## [N,f,L]
+        for i in range(x.size(0)):
+            self.pool_1[i,:,:] = self.pool_1[i,:,:]/seq_len[i]
    
         
-        out_1 = torch.matmul(pool_1, out_1.permute(0,2,1))
-        out_1 = out_1.reshape((out_1.size(0), out_1.size(1), out_1.size(2),1))
+        p_1 = torch.matmul(self.pool_1, self.out_1.permute(0,2,1))
+        p_1 = p_1.reshape((p_1.size(0), p_1.size(1), p_1.size(2),1))
         
-        # out_2 = torch.matmul(pool_2, out_2.permute(0,2,1))
-        # out_2 = out_2.reshape((out_2.size(0), out_2.size(1), out_2.size(2),1))
-        
-        # # out_3 = self.cnn3(out) ##[N,f,L]
-        # out_3 = torch.matmul(pool_3, out_3.permute(0,2,1))
-        # out_3 = out_3.reshape((out_3.size(0), out_3.size(1), out_3.size(2),1))
-        
-        # # out_4 = self.cnn4(out) ##[N,f,L]
-        # out_4 = torch.matmul(pool_4, out_4.permute(0,2,1))
-        # out_4 = out_4.reshape((out_4.size(0), out_4.size(1), out_4.size(2),1))
-        
-        # heat_map = torch.cat((out_1, out_2, out_3,out_4), dim=3)      
-        heat_map = out_1
-        # heat_map = nn.Softmax(dim=1)(heat_map)
-        
-        heat_map = heat_map.permute(0,2,3,1)
-        # heat_map = self.ln4(heat_map)
-        ## permuting the feature
-        if permute:
-            indices = torch.randperm(heat_map.shape[0])
-            heat_map[:, f[1],f[2], f[0]] = heat_map[indices, f[1],f[2], f[0]]
-        
-        heat_map = nn.Flatten()(heat_map) ## removing amino acid contribution from heat map as there are none       
-         
+        heat_map = p_1    
+        heat_map.register_hook(extract)
+    
+        heat_map = heat_map.permute(0,2,3,1)     
+        heat_map = nn.Flatten()(heat_map[:,:,:,:]) ## removing amino acid contribution from heat map as there are none        
         heat_map = self.nn(heat_map)
-        
-        return heat_map
-        
-    def make_possible_motifs(self,classes, s_len,fs):
-        self.fs = fs
-        motifs = []
-        sweep = 0
-        while (sweep+fs) <= s_len:
-            mo = classes[0,sweep:sweep+fs]
-            string_mo = ''            
-            for i in range(mo.size(0)):
-                string_mo = string_mo + amino_acid[mo[i]]
-            motifs.append(string_mo)
-            sweep += 1
-        self.motifs = motifs
-            
-        
-    def find_motifs(self,op, Lrep):
-        s_len = len(self.overall_imp_segments)
-        local_visit = torch.zeros((len(self.overall_imp_segments),))
-        mo_effect = op*Lrep
-        mo_effect = mo_effect[:,0:len(self.motifs)]
-        # mo_effect = (mo_effect-torch.mean(mo_effect))/torch.std(mo_effect)
-        mo_effect = torch.abs(mo_effect)
-        if torch.sum(mo_effect) == 0:
-            return False
-        else:
-            descending_idx = torch.argsort(mo_effect, descending=True)[0]
-            # descending_idx = descending_idx[0:10]
-            ''' # 10 here means that we are using assigning importance to 
-            only top 10 motifs related with respect to every element in R'''
-            
-            mo_effect = (mo_effect-torch.min(mo_effect))/(torch.max(mo_effect)-torch.min(mo_effect)+1E-18)
-            total_motif = len(descending_idx)
-            for i, d_idx in enumerate(descending_idx):
-                d_idx = int(d_idx)
-                for k in range(d_idx, d_idx+self.fs):
-                    if k < s_len:
-                        new_value = self.importance*(total_motif-i)*\
-                            (1- (torch.sum(local_visit)/s_len)) *mo_effect[0,d_idx]                      
-                        self.overall_imp_segments[k,] += new_value
-                        self.trace_visitation[k,] += 1
-                        if local_visit[k,] ==0:
-                            local_visit[k,] += 1
 
-            return True
         
-    def importance_calculation(self, x,  classes, seq_len, f, overall_imp_segments, importance, trace_visitation):
-        'x: [batch, seq_len, feature], classes: [N,L]'
-        self.trace_visitation = trace_visitation
-        self.importance =  importance
-        self.overall_imp_segments = overall_imp_segments
-        out = torch.permute(x,(0,2,1)) ## making it (N, f, L)
-        out = self.positional_encoding(out.permute(2,0,1),self.rank) ##[L,N,f]
-        out = out.permute(1,2,0)
-        
-        out_1 = self.cnn1(out) ##[N,f,L]
-        out_1 = torch.permute(self.ln1(torch.permute(out_1,(0,2,1))),(0,2,1))
-        # out_2 = self.cnn2(out) ##[N,f,L]
-        # out_2 = torch.permute(self.ln2(torch.permute(out_2,(0,2,1))),(0,2,1))
-        # out_3 = self.cnn3(out)
-        # out_3 = torch.permute(self.ln3(torch.permute(out_3,(0,2,1))),(0,2,1))
-        # out_4 = self.cnn4(out)
-        # out_4 = torch.permute(self.ln4(torch.permute(out_4,(0,2,1))),(0,2,1))
-        
-        pool_1 = self.maxpool1(x.permute(0,2,1))*self.motif_size_1 ## [N,f,L]
-        for i in range(x.size(0)):
-            pool_1[i,:,:] = pool_1[i,:,:]/seq_len[i]
-        
-        # pool_2 = self.maxpool2(x.permute(0,2,1))*self.motif_size_2 ## [N,f,L]
-        # pool_3 = self.maxpool3(x.permute(0,2,1))*self.motif_size_3 ## [N,f,L]
-        # pool_4 = self.maxpool4(x.permute(0,2,1))*self.motif_size_4 ## [N,f,L]
-        
-        # print(f[0])
-        if f[2] == 0:
-            self.make_possible_motifs(classes, seq_len,self.motif_size_1)
-            _ = self.find_motifs(pool_1[:,f[0],:], out_1.permute(0,2,1)[:,:,f[1]])
-        
-        # if f[2] == 1:
-        #     self.make_possible_motifs(classes, seq_len,self.motif_size_2)
-        #     _ = self.find_motifs(pool_2[:,f[0],:], out_2.permute(0,2,1)[:,:,f[1]])
-        
-        # if f[2] == 2:
-        #     self.make_possible_motifs(classes, seq_len,self.motif_size_3)
-        #     _ = self.find_motifs(pool_3[:,f[0],:], out_3.permute(0,2,1)[:,:,f[1]])
-        
-        # if f[2] == 3:
-        #     self.make_possible_motifs(classes, seq_len,self.motif_size_4)
-        #     _ = self.find_motifs(pool_4[:,f[0],:], out_4.permute(0,2,1)[:,:,f[1]])
-        
-        return self.overall_imp_segments, self.trace_visitation
+        return heat_map, cam 

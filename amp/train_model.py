@@ -148,7 +148,8 @@ def train(num_epochs, init_lr, max_m):
         
 if __name__=='__main__':
     cp_1 = time.time()
-    init_lr = 0.0003
+    init_lr = 0.0001
+    np.save('./model/init_lr', init_lr)
     max_m = int(1)
     ##change
     train(num_epochs, init_lr, max_m)

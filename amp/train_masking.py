@@ -24,7 +24,7 @@ from sklearn.metrics import balanced_accuracy_score, confusion_matrix,mean_absol
 from complor import dataset, complor_network
 
 top_per = input('Top how much percentage tokens should remain unmasked? ')
-top_per = int(top_per)
+top_per = float(top_per)
 np.save('./model/percentage_unmasked', top_per)
 
 writer = SummaryWriter(f"Training starting on:{date.today()}")

@@ -23,11 +23,11 @@ from complor import dataset, complor_network
 
 ## Dataloader
 batch_size = 256
-  
 
 def make_dataset(): 
         
     ohe_valid = np.load('./data/x_test.npy', allow_pickle=True)
+    # ohe_valid = np.load(f'./motif_results/x_{motif_name}.npy', allow_pickle=True)
     classes_valid = np.argmax(ohe_valid, axis=2)
     output_valid = np.load('./data/y_test.npy', allow_pickle=True)
     seq_len_valid = np.load('./data/len_test.npy', allow_pickle=True) 

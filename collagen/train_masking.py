@@ -24,11 +24,11 @@ from sklearn.metrics import balanced_accuracy_score, confusion_matrix,mean_absol
 from complor import dataset, complor_network
 
 top_per = input('Top how much percentage tokens should remain unmasked? ')
-top_per = int(top_per)
+top_per = float(top_per)
 np.save('./model/percentage_unmasked', top_per)
 
 writer = SummaryWriter(f"Training starting on:{date.today()}")
-writer = SummaryWriter(comment="Com-PLOR Masking model")
+writer = SummaryWriter(comment="Color Masking model")
 
 parser = argparse.ArgumentParser(description='Com-PLOR')
 parser.add_argument('--num_epochs', default=2500, type=int,
@@ -54,7 +54,6 @@ def masking_function(ohe, seq_len, importance):
         top_num_token = int(ceil(l*top_per/100))
         sample_imp = tuple(ex_token[top_num_token:].tolist())
         revised_x[k,sample_imp,:] = 0
-        revised_x[k,sample_imp,-1] = 0
     return revised_x  
 
 def make_dataset():        

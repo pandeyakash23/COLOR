@@ -19,15 +19,13 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import date
 import time
 import builtins
-import sys
-import pickle
 import argparse
-from sklearn.metrics import balanced_accuracy_score, confusion_matrix
-from complor import complor_network, dataset
+from sklearn.metrics import balanced_accuracy_score, confusion_matrix,mean_absolute_error
+from complor import dataset, complor_network
 
-   
+
 writer = SummaryWriter(f"Training starting on:{date.today()}")
-writer = SummaryWriter(comment="ComPLOR model")
+writer = SummaryWriter(comment="COLOR model")
 
 parser = argparse.ArgumentParser(description='Com-PLOR')
 parser.add_argument('--num_epochs', default=2500, type=int,
@@ -43,7 +41,6 @@ device = args.device
 ## Dataloader
 batch_size = 256
 
-
 def make_dataset():        
     ohe = np.load('./data/x_train.npy', allow_pickle=True)
     classes = np.argmax(ohe, axis=2)
@@ -52,7 +49,7 @@ def make_dataset():
     
     global q
     q = ohe.shape[-1]
-    
+ 
     train_dataset = dataset(ohe,classes,seq_len,output,ohe.shape[0])    
         
     ohe_valid = np.load('./data/x_valid.npy', allow_pickle=True)
@@ -73,11 +70,12 @@ def make_dataset():
     
     return train_loader, test_loader, ohe_valid.shape[0]
 
- 
+
+    
 def initalize(rank, max_m, init_lr):
-    d = 4 # hyperparameter
+    d = 4
     num_classes = 1 ## one property prediction
-    model = complor_network(num_classes, q, d, max_m, rank).to(rank)     
+    model = complor_network(num_classes, q,d,max_m,rank).to(rank)     
     print('Number of trainable parameters:', builtins.sum(p.numel() for p in model.parameters()))
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=init_lr)
@@ -85,12 +83,12 @@ def initalize(rank, max_m, init_lr):
     ## saving q,d,max_m for later use
     save_dict = {'q':q, 'd':d, 'max_m':max_m}
     np.save('./model/save_dict.npy', save_dict) 
-        
+    
     return model, criterion, optimizer
 
 ## Training loop
 def train(num_epochs, init_lr, max_m):
-    rank = torch.device(device if torch.cuda.is_available() else "cpu")
+    rank = device
     train_loader, valid_loader, valid_size  = make_dataset()
     model, criterion, optimizer = initalize(rank, max_m, init_lr)
     start_from = 0
@@ -133,20 +131,21 @@ def train(num_epochs, init_lr, max_m):
             predicted_label = predicted_label.cpu().numpy().reshape((-1,1))
             actual_label = actual_label.cpu().numpy().reshape((-1,1))
             valid_r2 = r2_score(actual_label, predicted_label)
+            mae = mean_absolute_error(actual_label, predicted_label)
             
                     
         writer.add_scalar("MSE Loss per epoch/train", avg_loss, epoch+1+start_from)
         writer.add_scalar("R2 Loss per epoch/valid", valid_r2, epoch+1+start_from)
-        # print(f'Done epoch {epoch+1+start_from}, MSE Loss: {avg_loss}, valid R2:{valid_r2}')
+        writer.add_scalar("MAE per epoch/valid", mae, epoch+1+start_from)
+        
         if valid_r2 >= largest_r2:
             torch.save(model, f'./model/best.pth')
             largest_r2 = valid_r2
-            
-
+        
 if __name__=='__main__':
     cp_1 = time.time()
-    # num_epochs = 2500
-    init_lr = 0.001
+    init_lr = 0.0005
+    np.save('./model/init_lr', init_lr)
     max_m = int(1)
     ##change
     train(num_epochs, init_lr, max_m)

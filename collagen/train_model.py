@@ -25,7 +25,7 @@ from complor import dataset, complor_network
 
 
 writer = SummaryWriter(f"Training starting on:{date.today()}")
-writer = SummaryWriter(comment="ComPLOR model")
+writer = SummaryWriter(comment="COLOR model")
 
 parser = argparse.ArgumentParser(description='Com-PLOR')
 parser.add_argument('--num_epochs', default=2500, type=int,
@@ -44,18 +44,18 @@ batch_size = 256
 def make_dataset():        
     ohe = np.load('./data/x_train.npy', allow_pickle=True)
     classes = np.argmax(ohe, axis=2)
-    output = np.load('./data//y_train.npy', allow_pickle=True)
-    seq_len = np.load('./data//len_train.npy', allow_pickle=True) 
+    output = np.load('./data/y_train.npy', allow_pickle=True)
+    seq_len = np.load('./data/len_train.npy', allow_pickle=True) 
     
     global q
     q = ohe.shape[-1]
  
     train_dataset = dataset(ohe,classes,seq_len,output,ohe.shape[0])    
         
-    ohe_valid = np.load('./data//x_valid.npy', allow_pickle=True)
+    ohe_valid = np.load('./data/x_valid.npy', allow_pickle=True)
     classes_valid = np.argmax(ohe_valid, axis=2)
-    output_valid = np.load('./data//y_valid.npy', allow_pickle=True)
-    seq_len_valid = np.load('./data//len_valid.npy', allow_pickle=True)
+    output_valid = np.load('./data/y_valid.npy', allow_pickle=True)
+    seq_len_valid = np.load('./data/len_valid.npy', allow_pickle=True)
     
  
     test_dataset = dataset(ohe_valid,classes_valid,seq_len_valid,output_valid,ohe_valid.shape[0])
@@ -145,6 +145,7 @@ def train(num_epochs, init_lr, max_m):
 if __name__=='__main__':
     cp_1 = time.time()
     init_lr = 0.0005
+    np.save('./model/init_lr', init_lr)
     max_m = int(1)
     ##change
     train(num_epochs, init_lr, max_m)

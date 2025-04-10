@@ -23,7 +23,7 @@ from complor import dataset, complor_network
 
 
 top_per = np.load('./model/percentage_unmasked.npy', allow_pickle=True).item()
-top_per = int(top_per)
+top_per = float(top_per)
 
 ## Dataloader
 batch_size = 256

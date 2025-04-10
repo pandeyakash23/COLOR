@@ -23,7 +23,7 @@ from complor import dataset, complor_network
 
 
 top_per = np.load('./model/percentage_unmasked.npy', allow_pickle=True).item()
-top_per = int(top_per)
+top_per = float(top_per)
 
 ## Dataloader
 batch_size = 256
@@ -38,7 +38,6 @@ def masking_function(ohe, seq_len, importance):
         top_num_token = int(ceil(l*top_per/100))
         sample_imp = tuple(ex_token[top_num_token:].tolist())
         revised_x[k,sample_imp,:] = 0
-        revised_x[k,sample_imp,-1] = 0
     return revised_x  
 
 def make_dataset(): 

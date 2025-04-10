@@ -19,17 +19,15 @@ from datetime import date
 import time
 import builtins
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix,mean_absolute_error,r2_score
-from complor import complor_network, dataset
-   
-# writer = SummaryWriter()
-# writer = SummaryWriter(f"Training starting on:{date.today()}")
-# writer = SummaryWriter(comment="transformer model")
+from complor import dataset, complor_network
 
 ## Dataloader
 batch_size = 256
+
 def make_dataset(): 
         
     ohe_valid = np.load('./data/x_test.npy', allow_pickle=True)
+    # ohe_valid = np.load(f'./motif_results/x_{motif_name}.npy', allow_pickle=True)
     classes_valid = np.argmax(ohe_valid, axis=2)
     output_valid = np.load('./data/y_test.npy', allow_pickle=True)
     seq_len_valid = np.load('./data/len_test.npy', allow_pickle=True) 
@@ -44,23 +42,20 @@ def make_dataset():
     
     return  test_loader, ohe_valid.shape[0]
 
-
     
-def initalize(max_m, init_lr):
+def initalize():
     
     model = torch.load('./model/best.pth')
     rank = next(model.parameters()).device 
     model.eval().to(rank) 
     print('Number of trainable parameters:', builtins.sum(p.numel() for p in model.parameters()))
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=init_lr)
     
-    return model, criterion, optimizer
+    return model, criterion
 
-## Training loop
-def test(num_epochs, init_lr, max_m):
+def test():
     test_loader, valid_size  = make_dataset()
-    model, criterion, optimizer = initalize(max_m, init_lr)
+    model, criterion = initalize()
     rank = next(model.parameters()).device 
     with torch.no_grad():
         predicted_label = torch.zeros((valid_size, 1))
@@ -84,18 +79,15 @@ def test(num_epochs, init_lr, max_m):
         predicted_label = predicted_label.cpu().numpy().reshape((-1,1))
         # print(predicted_label)
         actual_label = actual_label.cpu().numpy().reshape((-1,1))
-
+        
         valid_r2 = r2_score(actual_label, predicted_label)
         mae = mean_absolute_error(actual_label, predicted_label)
         print('MSE:',base_loss)
         print(f'Test R2:{valid_r2}, MAE:{mae}')
+
         
 if __name__=='__main__':
     cp_1 = time.time()
-    num_epochs = 1
-    init_lr = 0.0003
-    max_m = int(3)
-    ##change
-    test(num_epochs, init_lr, max_m)
+    test()
     cp_2 = time.time()
     print('Time Taken',cp_2-cp_1)
