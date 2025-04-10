@@ -1,5 +1,5 @@
 # COLOR
-![](https://drive.google.com/file/d/1RjHfIHcBQP5kwOnQOCZvP1tFrGMko-Wk/view?usp=drive_link)
+![Model Architecture](https://drive.google.com/file/d/1RjHfIHcBQP5kwOnQOCZvP1tFrGMko-Wk/view?usp=drive_link)
 
 **Paper** <br>
 [COLOR: A compositional linear operation-based representation of protein sequences for identification of monomer contributions to properties](https://doi.org/10.1021/acs.jcim.5c00205) <br>
