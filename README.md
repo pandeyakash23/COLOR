@@ -27,3 +27,16 @@
     - This code will ask for the `% of unmasking` required for the run. 
  - Run `test_masking.py` to test the model with certain % of unmasked monomers. 
 
+## Citation
+
+If you use this work, please cite:
+
+```bibtex
+@article{pandey2025color,
+  title={COLOR: A compositional linear operation-based representation of protein sequences for identification of monomer contributions to properties},
+  author={Pandey, Akash and Chen, Wei and Keten, Sinan},
+  journal={Journal of Chemical Information and Modeling},
+  year={2025},
+  publisher={ACS Publications}
+}
+
