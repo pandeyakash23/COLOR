@@ -218,11 +218,18 @@ class complor_network(nn.Module):
             for j in range(d_id): # j in related to num of categorical var
                 for prot in range(total): # prot defines the protein number in a batch
                     l = int(self.seq_len[prot])
-                    temp = torch.abs(d_comp[prot,j,0:l]*q_comp[prot,i,0:l]) # taking abs because the magnitude matters
+                    var_imp = dp[prot,j,i].unsqueeze(-1)
+                    # temp = torch.abs(d_comp[prot,j,0:l]*q_comp[prot,i,0:l]) # taking abs because the magnitude matters
+                    
+                    #AKASH CHANGES (for positive importance only)
+                    temp = nn.ReLU()(var_imp*d_comp[prot,j,0:l]*q_comp[prot,i,0:l]) # taking abs because the magnitude matters
+
+                    #AKASH CHANGES (for negative importance only)
+                    # temp = nn.ReLU()(-var_imp*d_comp[prot,j,0:l]*q_comp[prot,i,0:l]) # taking abs because the magnitude matters
+                    
                     temp = (temp-torch.min(temp))/(torch.max(temp)-torch.min(temp)+1E-18)
                     # temp = (temp)/(torch.max(temp)+1E-18)
-                    var_imp = dp[prot,j,i].unsqueeze(-1)
-                    all_motif_importance[prot,0:l] += temp*var_imp
+                    all_motif_importance[prot,0:l] += temp*abs(var_imp)
 
         return all_motif_importance
     

@@ -145,7 +145,9 @@ def motif_identification():
         optimizer.zero_grad()
         base_loss.backward()
         
-        cam = torch.abs(cam[0])
+        # cam = torch.abs(cam[0])
+        #AKASH CHANGES
+        cam = cam[0] 
         print('Size of the gradient',cam.size())
 
         
